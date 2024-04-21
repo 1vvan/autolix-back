@@ -16,7 +16,7 @@ class AutoController {
           car.images = car.images.map(imageObj => {
             return {
               id: imageObj.id,
-              path: `${process.env.AUTO_IMAGE_PATH}/${imageObj.path}`
+              path: imageObj.path
             };
           });
         }
@@ -43,7 +43,7 @@ class AutoController {
           car.images = car.images.map(imageObj => {
             return {
               id: imageObj.id,
-              path: `${process.env.AUTO_IMAGE_PATH}/${imageObj.path}`
+              path: imageObj.path
             };
           });
         }
@@ -67,7 +67,7 @@ class AutoController {
           car.images = car.images.map(imageObj => {
             return {
               id: imageObj.id,
-              path: `${process.env.AUTO_IMAGE_PATH}/${imageObj.path}`
+              path: imageObj.path
             };
           });
         }
@@ -93,13 +93,13 @@ class AutoController {
       res.status(500).send(`Error, ${err.message}`);
     }
   };
-  async addCar(req, res) {
+  async addCar(files, req, res) {
     try {
       const { year, color, engine_type_id, engine_capacity, fuel_id, gearbox_type_id, drive_unit_id, vin, price, horse_power, model_id } = req.body;
       const result = await pool.query('SELECT add_car($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)', [year, color, engine_type_id, engine_capacity, fuel_id, gearbox_type_id, drive_unit_id, vin, price, horse_power, model_id]);
       const carId = result.rows[0].add_car;
 
-      this.uploadCarImages(req.files, carId)
+      this.uploadCarImages(files, carId)
 
       res.status(200).json({ message: 'Car was added', carId: carId });
     } catch (err) {
