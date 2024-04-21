@@ -1,138 +1,42 @@
-const pool = require('../db');
+const Router = require('express');
+const router = new Router();
 
-class AutoController {
-  // get
-  async getAllCars(req, res) {
-    try {
-      const { brand_id, model_id, status_id, year_min, year_max, gearbox_type_id, engine_type_id, fuel_id, drive_unit_id } = req.query;
+const { uploadToS3 } = require('../config/s3-upload');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
-      const result = await pool.query(
-        `SELECT * FROM get_all_autos($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [brand_id || null, model_id || null, status_id || null, year_min || null, year_max || null, gearbox_type_id || null, engine_type_id || null, fuel_id || null, drive_unit_id || null]
-      );
+const autoImagesController = require('../controllers/auto-images.controller');
 
-      const carsWithUpdatedImages = result.rows.map(car => {
-        if (car.images && car.images.length > 0) {
-          car.images = car.images.map(imageObj => {
-            return {
-              id: imageObj.id,
-              path: imageObj.path
-            };
-          });
-        }
-        return car;
-      });
+router.post('/autos/:carId/images', upload.array('images', 10), async (req, res) => {
+  const carId = req.params.carId;
 
-      res.json(carsWithUpdatedImages);
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ err });
-    }
-  };
-  async getAvailableCars(req, res) {
-    try {
-      const { brand_id, model_id, year_min, year_max, gearbox_type_id, engine_type_id, fuel_id, drive_unit_id } = req.query;
-
-      const result = await pool.query(
-        `SELECT * FROM get_available_autos($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [brand_id || null, model_id || null, year_min || null, year_max || null, gearbox_type_id || null, engine_type_id || null, fuel_id || null, drive_unit_id || null]
-      );
-
-      const carsWithUpdatedImages = result.rows.map(car => {
-        if (car.images && car.images.length > 0) {
-          car.images = car.images.map(imageObj => {
-            return {
-              id: imageObj.id,
-              path: imageObj.path
-            };
-          });
-        }
-        return car;
-      });
-
-      res.json(carsWithUpdatedImages);
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send(`Error, ${err.message}`);
-    }
-  };
-
-  async getOneAuto(req, res) {
-    try {
-      const { id } = req.params;
-      const { rows } = await pool.query('SELECT * FROM get_one_auto($1)', [id]);
-
-      const carsWithUpdatedImages = rows.map(car => {
-        if (car.images && car.images.length > 0) {
-          car.images = car.images.map(imageObj => {
-            return {
-              id: imageObj.id,
-              path: imageObj.path
-            };
-          });
-        }
-        return car;
-      });
-
-      res.json(carsWithUpdatedImages[0]);
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send(`Error, ${err.message}`);
-    }
+  if (!req.files || req.files.length === 0) {
+      return res.status(400).send('No files uploaded.');
   }
 
+  const uploads = req.files.map((file) => {
+      const key = `${Date.now()}-${file.originalname}`;
+      return uploadToS3(file.buffer, key)
+          .then((uploadResult) => ({
+              status: 'Success',
+              key: key,
+              url: uploadResult.Location,
+              bucket: uploadResult.Bucket
+          }))
+          .catch((error) => ({
+              status: 'Failed',
+              key: key,
+              message: error.message
+          }));
+  });
 
-  // post
-  async buyCar(req, res) {
-    try {
-      const { user_id, buying_price, buying_car_id, payment_method, phone, email, address } = req.body;
-      await pool.query('SELECT buy_car($1, $2, $3, $4, $5, $6, $7)', [user_id, buying_price, buying_car_id, payment_method, phone, email, address]);
-      res.status(200).send('Car bought successfully');
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send(`Error, ${err.message}`);
-    }
-  };
-  async addCar(files, req, res) {
-    try {
-      const { year, color, engine_type_id, engine_capacity, fuel_id, gearbox_type_id, drive_unit_id, vin, price, horse_power, model_id } = req.body;
-      const result = await pool.query('SELECT add_car($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)', [year, color, engine_type_id, engine_capacity, fuel_id, gearbox_type_id, drive_unit_id, vin, price, horse_power, model_id]);
-      const carId = result.rows[0].add_car;
-
-      this.uploadCarImages(files, carId)
-
-      res.status(200).json({ message: 'Car was added', carId: carId });
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send(`Error, ${err.message}`);
-    }
+  try {
+      const results = await Promise.all(uploads);
+      autoImagesController.uploadCarImages(results.filter(r => r.status === 'Success'), carId, req, res);
+  } catch (error) {
+      res.status(500).json({ message: "Error processing files", error: error.toString() });
   }
-  async updateAuto(req, res) {
-    const { id, model_id, year, color, engine_type_id, engine_capacity, fuel_id, gearbox_type_id, drive_unit_id, vin, price, status_id, horse_power } = req.body;
-    try {
-      const result = await pool.query(
-        `SELECT update_auto($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-        [id, model_id, year, color, engine_type_id, engine_capacity, fuel_id, gearbox_type_id, drive_unit_id, vin, price, status_id, horse_power]
-      );
-      res.status(200).json({ message: 'The car is successfully updated' });
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send(`Error: ${err.message}`);
-    }
-  }
+});
+router.delete('/autos/images/:imgId/delete', autoImagesController.deleteCarImage);
 
-
-  //delete
-  async deleteCar(req, res) {
-    try {
-      const car_id = req.params.carId;
-      await pool.query(`DELETE FROM public.autos WHERE id = ${car_id};`);
-      res.json({ message: 'Car was deleted successfuly' });
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send(`Error, ${err.message}`);
-    }
-  };
-}
-
-module.exports = new AutoController()
+module.exports = router;
