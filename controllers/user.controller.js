@@ -5,13 +5,13 @@ require('dotenv').config();
 
 class UserController {
     async registerUser (req, res) {
-        const { email, password, fullName } = req.body;
+        const { email, password, full_name } = req.body;
 
         try {
             const hashedPassword = await bcrypt.hash(password, 10);
             const newUser = await pool.query(
                 'INSERT INTO users (email, password, full_name) VALUES ($1, $2, $3) RETURNING *',
-                [email, hashedPassword, fullName]
+                [email, hashedPassword, full_name]
             );
             const token = jwt.sign(
                 { userId: newUser.rows[0].id, email: newUser.rows[0].email, isAdmin: newUser.rows[0].is_admin },
