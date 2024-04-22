@@ -1,4 +1,5 @@
 const pool = require('../db');
+const imagesController = require('./auto-images.controller')
 
 class AutoController {
   // get
@@ -99,7 +100,7 @@ class AutoController {
       const result = await pool.query('SELECT add_car($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)', [year, color, engine_type_id, engine_capacity, fuel_id, gearbox_type_id, drive_unit_id, vin, price, horse_power, model_id]);
       const carId = result.rows[0].add_car;
 
-      this.uploadCarImages(files, carId)
+      imagesController.uploadCarImages(files, carId)
 
       res.status(200).json({ message: 'Car was added', carId: carId });
     } catch (err) {
