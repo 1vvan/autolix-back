@@ -10,10 +10,8 @@ class AutoImagesController {
     
             await pool.query(query);
     
-            res.json({ message: 'Images are successfully uploaded and linked to the car' });
         } catch (err) {
             console.error(err);
-            res.status(500).send(`Error: ${err}`);
         }
     }
 
