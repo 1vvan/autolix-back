@@ -1,6 +1,6 @@
 const pool = require('../db');
 const format = require('pg-format');
-const { deleteFromS3 } = require('../config/s3-upload');
+const fs = require('fs');
 
 class AutoImagesController {
     async uploadCarImages(files, carId, req, res) {
@@ -26,28 +26,22 @@ class AutoImagesController {
                 return res.status(404).json({ message: 'Image not found' });
             }
     
-            let imagePath = selectRes.rows[0].image_path;
-
-            const baseUrl = 'https://autolix.s3.eu-north-1.amazonaws.com/';
-            if (imagePath.startsWith(baseUrl)) {
-                imagePath = imagePath.substring(baseUrl.length);
-            }
+            const imageUrl = selectRes.rows[0].image_path;
+            const imagePath = imageUrl.replace('http://localhost:8080/uploads/', 'uploads/');
     
-            await deleteFromS3(imagePath);
+            fs.unlink(imagePath, (err) => {
+                if (err) console.error('Failed to delete file:', err);
+            });
     
             const deleteQuery = `DELETE FROM autos_images WHERE id = $1;`;
-            const deleteRes = await pool.query(deleteQuery, [imgId]);
+            await pool.query(deleteQuery, [imgId]);
     
-            if (deleteRes.rowCount > 0) {
-                res.json({ message: 'Image deleted successfully', imageName: imagePath });
-            } else {
-                res.status(404).json({ message: 'Failed to delete image record' });
-            }
+            res.json({ message: 'Image deleted successfully', imageName: imagePath });
         } catch (err) {
             console.error(err);
             res.status(500).send(`Error, ${err}`);
         }
-    }
+    }    
 }
 
 module.exports = new AutoImagesController()
