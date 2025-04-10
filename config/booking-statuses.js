@@ -1,0 +1,2 @@
+const CANCELLED_BY_CLIENT_STATUS_ID = 5;
+module.exports = { CANCELLED_BY_CLIENT_STATUS_ID };

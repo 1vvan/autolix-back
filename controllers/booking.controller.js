@@ -1,3 +1,4 @@
+const { CANCELLED_BY_CLIENT_STATUS_ID } = require('../config/booking-statuses');
 const pool = require('../db');
 
 class BookingController {
@@ -91,6 +92,73 @@ class BookingController {
             res.status(500).json({ message: "Something went wrong. Try again later...", error: error.toString() });
         }
     }    
+
+    async updateBookingDateTime(req, res) {
+        try {
+            const bookingId = req.params.id;
+            const { booking_date, booking_time } = req.body;
+    
+            if (!booking_date || !booking_time) {
+                return res.status(400).json({ message: "Missing date or time" });
+            }
+    
+            const result = await pool.query(
+                `UPDATE bookings 
+                 SET booking_date = $1, booking_time = $2
+                 WHERE id = $3
+                 RETURNING *`,
+                [booking_date, booking_time, bookingId]
+            );
+    
+            if (result.rowCount === 0) {
+                return res.status(404).json({ message: "Booking not found" });
+            }
+    
+            res.status(200).json({ message: "Booking date/time updated", booking: result.rows[0] });
+        } catch (err) {
+            console.error("Error updating booking date/time:", err);
+            res.status(500).json({ message: "Internal server error", error: err.toString() });
+        }
+    }    
+
+    async cancelBooking(req, res) {
+        try {
+            const bookingId = req.params.id;
+            const { comment } = req.body;
+
+            if (!comment || comment.trim().length === 0) {
+                return res.status(400).json({ message: "Comment is required" });
+            }
+
+            const updateBookingResult = await pool.query(
+                `UPDATE bookings 
+                 SET status_id = $1, status_changed_at = NOW()
+                 WHERE id = $2
+                 RETURNING *`,
+                [CANCELLED_BY_CLIENT_STATUS_ID, bookingId]
+            );
+
+            if (updateBookingResult.rowCount === 0) {
+                return res.status(404).json({ message: "Booking not found" });
+            }
+
+            const booking = updateBookingResult.rows[0];
+
+            await pool.query(
+                `INSERT INTO booking_comments (booking_id, comment, comment_type)
+                 VALUES ($1, $2, 'client')`,
+                [bookingId, comment]
+            );
+
+            res.status(200).json({
+                message: "Booking cancelled successfully",
+                booking,
+            });
+        } catch (err) {
+            console.error("Error cancelling booking:", err);
+            res.status(500).json({ message: "Internal server error", error: err.toString() });
+        }
+    }
 }
 
 module.exports = new BookingController()
