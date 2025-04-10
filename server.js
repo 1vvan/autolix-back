@@ -10,6 +10,7 @@ const autoImagesRouter = require('./routes/auto-images.router')
 const userRouter = require('./routes/user.routes')
 const clientsRouter = require('./routes/clients.routes')
 const salesRouter = require('./routes/sales.routes')
+const bookingRouter = require('./routes/booking.router')
 const modelsRouter = require('./routes/models.router')
 
 const app = express();
@@ -43,6 +44,7 @@ app.use('/api', modelsRouter);
 // app.use('/api', typesRouter);
 app.use('/api', clientsRouter);
 app.use('/api', salesRouter);
+app.use('/api', bookingRouter);
 
 
 app.listen(PORT, () => console.log(`Server started on ${PORT}`))
