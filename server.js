@@ -36,6 +36,7 @@ app.use(cors(corsOptions));
 app.use('/uploads', express.static('uploads'));
 app.use('/api', userRouter);
 app.use('/api', basicRouter);
+app.use('/api', bookingRouter);
 
 app.use(authenticateToken);
 app.use('/api', autoRouter);
@@ -44,7 +45,5 @@ app.use('/api', modelsRouter);
 // app.use('/api', typesRouter);
 app.use('/api', clientsRouter);
 app.use('/api', salesRouter);
-app.use('/api', bookingRouter);
-
 
 app.listen(PORT, () => console.log(`Server started on ${PORT}`))

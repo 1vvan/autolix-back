@@ -19,6 +19,18 @@ class BookingController {
         }
     }
 
+    async getAllAppointments (req, res) {
+        try {
+            const queryText = 'SELECT * FROM get_all_bookings()';
+            const { rows } = await pool.query(queryText);
+
+            res.json(rows);
+        } catch (error) {
+            console.error(error.message);
+            res.status(500).send(`Error, ${error.message}`);
+        }
+    }
+
     async getBookedSlotsByDate(req, res) {
         try {
             const { date } = req.query;

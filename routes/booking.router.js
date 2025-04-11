@@ -3,6 +3,7 @@ const bookingController = require('../controllers/booking.controller');
 const router = new Router();
 
 router.post("/bookings", bookingController.addBooking);
+router.get("/bookings", bookingController.getAllAppointments);
 
 router.put("/bookings/:id/date", bookingController.updateBookingDateTime);
 router.put("/bookings/:id/cancel", bookingController.cancelBooking);
