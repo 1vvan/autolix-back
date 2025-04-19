@@ -1,4 +1,4 @@
-const { CANCELLED_BY_CLIENT_STATUS_ID } = require('../config/booking-statuses');
+const { CANCELLED_BY_CLIENT_STATUS_ID, CANCELLED_BY_MANAGER_STATUS_ID, CLIENT_DO_NOT_COME_STATUS_ID, DONE_STATUS_ID } = require('../config/booking-statuses');
 const pool = require('../db');
 const { calculateYearModifier } = require('../helpers/helpers');
 
@@ -184,44 +184,73 @@ class BookingController {
         }
     }    
 
-    async cancelBooking(req, res) {
+    async updateBookingStatus(req, res) {
         try {
             const bookingId = req.params.id;
-            const { comment } = req.body;
-
-            if (!comment || comment.trim().length === 0) {
-                return res.status(400).json({ message: "Comment is required" });
+            const { status_id, comment } = req.body;
+    
+            const allowedStatuses = [
+                DONE_STATUS_ID,
+                CLIENT_DO_NOT_COME_STATUS_ID,
+                CANCELLED_BY_MANAGER_STATUS_ID,
+                CANCELLED_BY_CLIENT_STATUS_ID,
+            ];
+    
+            if (!allowedStatuses.includes(status_id)) {
+                return res.status(400).json({ message: "Invalid status_id" });
             }
-
+    
+            const commentTypesByStatus = {
+                [CANCELLED_BY_CLIENT_STATUS_ID]: 'client',
+                [CANCELLED_BY_MANAGER_STATUS_ID]: 'manager',
+                [DONE_STATUS_ID]: 'manager',
+                [CLIENT_DO_NOT_COME_STATUS_ID]: 'manager',
+            };
+    
+            const commentType = commentTypesByStatus[status_id];
+    
+            const commentRequired = [
+                CANCELLED_BY_CLIENT_STATUS_ID,
+                CANCELLED_BY_MANAGER_STATUS_ID,
+            ];
+    
+            if (commentRequired.includes(status_id)) {
+                if (!comment || comment.trim().length === 0) {
+                    return res.status(400).json({ message: "Comment is required for this status" });
+                }
+            }
+    
             const updateBookingResult = await pool.query(
                 `UPDATE bookings 
                  SET status_id = $1, status_changed_at = NOW()
                  WHERE id = $2
                  RETURNING *`,
-                [CANCELLED_BY_CLIENT_STATUS_ID, bookingId]
+                [status_id, bookingId]
             );
-
+    
             if (updateBookingResult.rowCount === 0) {
                 return res.status(404).json({ message: "Booking not found" });
             }
-
+    
             const booking = updateBookingResult.rows[0];
-
-            await pool.query(
-                `INSERT INTO booking_comments (booking_id, comment, comment_type)
-                 VALUES ($1, $2, 'client')`,
-                [bookingId, comment]
-            );
-
+    
+            if (comment && comment.trim().length > 0) {
+                await pool.query(
+                    `INSERT INTO booking_comments (booking_id, comment, comment_type)
+                     VALUES ($1, $2, $3)`,
+                    [bookingId, comment.trim(), commentType]
+                );
+            }
+    
             res.status(200).json({
-                message: "Booking cancelled successfully",
+                message: "Booking status updated successfully",
                 booking,
             });
         } catch (err) {
-            console.error("Error cancelling booking:", err);
+            console.error("Error updating booking status:", err);
             res.status(500).json({ message: "Internal server error", error: err.toString() });
         }
-    }
+    }    
 }
 
 module.exports = new BookingController()

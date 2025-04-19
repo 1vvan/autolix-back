@@ -6,7 +6,7 @@ router.post("/bookings", bookingController.addBooking);
 router.get("/bookings", bookingController.getAllAppointments);
 
 router.put("/bookings/:id/date", bookingController.updateBookingDateTime);
-router.put("/bookings/:id/cancel", bookingController.cancelBooking);
+router.patch("/bookings/:id/status", bookingController.updateBookingStatus);
 router.get('/bookings/:phone/appointments', bookingController.getClientAppointments)
 
 router.get("/bookings/services", bookingController.getAllServices);
