@@ -1,5 +1,6 @@
 const { CANCELLED_BY_CLIENT_STATUS_ID } = require('../config/booking-statuses');
 const pool = require('../db');
+const { calculateYearModifier } = require('../helpers/helpers');
 
 class BookingController {
     async getClientAppointments (req, res) {
@@ -60,11 +61,22 @@ class BookingController {
             res.status(500).send(`Error, ${err.message}`);
         }
     };
+
     async addBooking(req, res) {
         try {
-            const { phone, model_id, car_year, engine_capacity, fuel_id, comment, booking_date, booking_time, services } = req.body;
+            const {
+                phone,
+                model_id,
+                car_year,
+                engine_capacity,
+                fuel_id,
+                comment,
+                booking_date,
+                booking_time,
+                services
+            } = req.body;
     
-            const status_id = 1;  
+            const status_id = 1;
     
             const client = await pool.connect();
     
@@ -76,25 +88,64 @@ class BookingController {
                     (phone, model_id, car_year, engine_capacity, fuel_id, comment, booking_date, booking_time, status_id, status_changed_at) 
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) 
                     RETURNING id`,
-                    [phone.replace(/\s+/g, ''), model_id, car_year, engine_capacity, fuel_id, comment || null, booking_date, booking_time, status_id]
+                    [
+                        phone.replace(/\s+/g, ''),
+                        model_id,
+                        car_year,
+                        engine_capacity,
+                        fuel_id,
+                        comment || null,
+                        booking_date,
+                        booking_time,
+                        status_id
+                    ]
                 );
     
                 const bookingId = result.rows[0].id;
     
+                const yearModifier = calculateYearModifier(car_year);
+    
                 if (services && services.length > 0) {
-                    const values = services.map((_, i) => `($1, $${i + 2})`).join(", ");
+                    const serviceInsertValues = services.map((_, i) => `($1, $${i + 2})`).join(', ');
                     await client.query(
-                        `INSERT INTO booking_services (booking_id, service_id) VALUES ${values}`,
+                        `INSERT INTO booking_services (booking_id, service_id) VALUES ${serviceInsertValues}`,
                         [bookingId, ...services]
+                    );
+    
+                    const serviceData = await client.query(
+                        `SELECT id, base_price FROM services WHERE id = ANY($1::int[])`,
+                        [services]
+                    );
+                    const serviceMap = new Map(serviceData.rows.map(s => [s.id, parseFloat(s.base_price)]));
+    
+                    const detailValues = [];
+                    const detailParams = [];
+    
+                    services.forEach((serviceId, i) => {
+                        const basePrice = serviceMap.get(serviceId);
+                        const finalPrice = basePrice + yearModifier;
+    
+                        detailValues.push(
+                            `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5})`
+                        );
+                        detailParams.push(bookingId, serviceId, basePrice, yearModifier, finalPrice);
+                    });
+    
+                    await client.query(
+                        `INSERT INTO booking_service_details (booking_id, service_id, base_price, year_modifier, final_price)
+                         VALUES ${detailValues.join(', ')}`,
+                        detailParams
                     );
                 }
     
                 await client.query("COMMIT");
     
                 res.status(201).json({ message: "Appointment created successfully" });
+    
             } catch (err) {
                 await client.query("ROLLBACK");
-                throw err;
+                console.error("Ошибка в транзакции:", err);
+                res.status(500).json({ message: "Transaction failed", error: err.toString() });
             } finally {
                 client.release();
             }
@@ -103,7 +154,7 @@ class BookingController {
             console.error("Ошибка при создании записи:", error);
             res.status(500).json({ message: "Something went wrong. Try again later...", error: error.toString() });
         }
-    }    
+    }      
 
     async updateBookingDateTime(req, res) {
         try {
