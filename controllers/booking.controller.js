@@ -159,7 +159,7 @@ class BookingController {
     async updateBookingDateTime(req, res) {
         try {
             const bookingId = req.params.id;
-            const { booking_date, booking_time } = req.body;
+            const { booking_date, booking_time, managerComment } = req.body;
     
             if (!booking_date || !booking_time) {
                 return res.status(400).json({ message: "Missing date or time" });
@@ -172,9 +172,18 @@ class BookingController {
                  RETURNING *`,
                 [booking_date, booking_time, bookingId]
             );
-    
+            
+
             if (result.rowCount === 0) {
                 return res.status(404).json({ message: "Booking not found" });
+            }
+
+            if (managerComment && managerComment.trim().length > 0) {
+                await pool.query(
+                    `INSERT INTO booking_comments (booking_id, comment, comment_type)
+                     VALUES ($1, $2, $3)`,
+                    [bookingId, managerComment.trim(), 'manager']
+                );
             }
     
             res.status(200).json({ message: "Booking date/time updated", booking: result.rows[0] });
@@ -249,6 +258,100 @@ class BookingController {
         } catch (err) {
             console.error("Error updating booking status:", err);
             res.status(500).json({ message: "Internal server error", error: err.toString() });
+        }
+    }    
+
+    async updateBookingDetails(req, res) {
+        const client = await pool.connect();
+        try {
+            const bookingId = req.params.id;
+            const {
+                model_id,
+                car_year,
+                engine_capacity,
+                fuel_id,
+                services = [],
+                comment
+            } = req.body;
+    
+            await client.query("BEGIN");
+    
+            await client.query(`
+                UPDATE bookings
+                SET model_id = $1,
+                    car_year = $2,
+                    engine_capacity = $3,
+                    fuel_id = $4
+                WHERE id = $5
+            `, [
+                model_id,
+                car_year,
+                engine_capacity,
+                fuel_id,
+                bookingId
+            ]);
+    
+            await client.query(
+                `DELETE FROM booking_services WHERE booking_id = $1`,
+                [bookingId]
+            );
+            await client.query(
+                `DELETE FROM booking_service_details WHERE booking_id = $1`,
+                [bookingId]
+            );
+    
+            if (services.length > 0) {
+                const insertServiceValues = services.map((_, i) => `($1, $${i + 2})`).join(', ');
+                await client.query(
+                    `INSERT INTO booking_services (booking_id, service_id) VALUES ${insertServiceValues}`,
+                    [bookingId, ...services]
+                );
+    
+                const serviceData = await client.query(
+                    `SELECT id, base_price FROM services WHERE id = ANY($1::int[])`,
+                    [services]
+                );
+                const serviceMap = new Map(serviceData.rows.map(s => [s.id, parseFloat(s.base_price)]));
+                const yearModifier = calculateYearModifier(car_year);
+    
+                const detailValues = [];
+                const detailParams = [];
+    
+                services.forEach((serviceId, i) => {
+                    const basePrice = serviceMap.get(serviceId);
+                    const finalPrice = basePrice + yearModifier;
+    
+                    detailValues.push(
+                        `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5})`
+                    );
+                    detailParams.push(bookingId, serviceId, basePrice, yearModifier, finalPrice);
+                });
+    
+                await client.query(
+                    `INSERT INTO booking_service_details (booking_id, service_id, base_price, year_modifier, final_price)
+                     VALUES ${detailValues.join(', ')}`,
+                    detailParams
+                );
+            }
+
+            if (comment && comment.trim().length > 0) {
+                await pool.query(
+                    `INSERT INTO booking_comments (booking_id, comment, comment_type)
+                     VALUES ($1, $2, $3)`,
+                    [bookingId, comment.trim(), 'manager']
+                );
+            }
+    
+            await client.query("COMMIT");
+    
+            res.status(200).json({ message: "Booking updated successfully" });
+    
+        } catch (err) {
+            await client.query("ROLLBACK");
+            console.error("Error updating booking:", err);
+            res.status(500).json({ message: "Failed to update booking", error: err.toString() });
+        } finally {
+            client.release();
         }
     }    
 }
